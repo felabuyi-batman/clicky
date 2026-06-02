@@ -696,22 +696,38 @@ struct CompanionPanelView: View {
             .buttonStyle(.plain)
             .pointerCursor()
 
-            if companionManager.hasCompletedOnboarding {
-                Spacer()
+            Spacer()
 
+            HStack(spacing: 14) {
                 Button(action: {
-                    companionManager.replayOnboarding()
+                    NotificationCenter.default.post(name: .clickyCheckForUpdates, object: nil)
                 }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "play.circle")
+                        Image(systemName: "arrow.triangle.2.circlepath")
                             .font(.system(size: 11, weight: .medium))
-                        Text("Watch Onboarding Again")
+                        Text("Check for Updates")
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundColor(DS.Colors.textTertiary)
                 }
                 .buttonStyle(.plain)
                 .pointerCursor()
+
+                if companionManager.hasCompletedOnboarding {
+                    Button(action: {
+                        companionManager.replayOnboarding()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.circle")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Watch Onboarding Again")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(DS.Colors.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .pointerCursor()
+                }
             }
         }
     }

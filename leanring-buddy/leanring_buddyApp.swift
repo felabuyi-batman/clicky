@@ -32,6 +32,7 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarPanelManager: MenuBarPanelManager?
     private let companionManager = CompanionManager()
     private var sparkleUpdaterController: SPUStandardUpdaterController?
+    private var checkForUpdatesObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("🎯 Clicky: Starting...")
@@ -50,10 +51,13 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
             menuBarPanelManager?.showPanelOnLaunch()
         }
         registerAsLoginItemIfNeeded()
-        // startSparkleUpdater()
+        startSparkleUpdater()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let observer = checkForUpdatesObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         companionManager.stop()
     }
 
@@ -84,6 +88,18 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
             try updaterController.updater.start()
         } catch {
             print("⚠️ Clicky: Sparkle updater failed to start: \(error)")
+        }
+
+        // Let the menu bar panel trigger a manual update check via the
+        // "Check for Updates" button. The button posts this notification
+        // rather than holding a direct reference to the Sparkle controller,
+        // matching the existing NotificationCenter-based panel wiring.
+        checkForUpdatesObserver = NotificationCenter.default.addObserver(
+            forName: .clickyCheckForUpdates,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.sparkleUpdaterController?.updater.checkForUpdates()
         }
     }
 }
