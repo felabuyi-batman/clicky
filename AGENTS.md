@@ -30,11 +30,14 @@ The app never calls external APIs directly. All requests go through a Cloudflare
 | Route | Upstream | Purpose |
 |-------|----------|---------|
 | `POST /chat` | `api.anthropic.com/v1/messages` | Claude vision + streaming chat |
-| `POST /tts` | `api.elevenlabs.io/v1/text-to-speech/{voiceId}` | ElevenLabs TTS audio |
+| `POST /tts` | `api.elevenlabs.io/v1/text-to-speech/{voiceId}` | ElevenLabs TTS audio (optional per-request `voice_id` override) |
 | `POST /transcribe-token` | `streaming.assemblyai.com/v3/token` | Fetches a short-lived (480s) AssemblyAI websocket token |
+| `POST /voice-clone` | `api.elevenlabs.io/v1/voices/add` | Instant voice cloning from uploaded memory audio (multipart) |
+| `GET/PUT /persona/:id` | Cloudflare KV (`LEGACY_PERSONA_STORE`) | Store/restore a legacy persona JSON |
 
 Worker secrets: `ANTHROPIC_API_KEY`, `ASSEMBLYAI_API_KEY`, `ELEVENLABS_API_KEY`
 Worker vars: `ELEVENLABS_VOICE_ID`
+Worker KV: `LEGACY_PERSONA_STORE` (create with `npx wrangler kv namespace create LEGACY_PERSONA_STORE`, paste id into `wrangler.toml`)
 
 ### Key Architecture Decisions
 
@@ -47,6 +50,10 @@ Worker vars: `ELEVENLABS_VOICE_ID`
 **Shared URLSession for AssemblyAI**: A single long-lived `URLSession` is shared across all AssemblyAI streaming sessions (owned by the provider, not the session). Creating and invalidating a URLSession per session corrupts the OS connection pool and causes "Socket is not connected" errors after a few rapid reconnections.
 
 **Transient Cursor Mode**: When "Show Clicky" is off, pressing the hotkey fades in the cursor overlay for the duration of the interaction (recording → response → TTS → optional pointing), then fades it out automatically after 1 second of inactivity.
+
+### Legacy / "Digital Immortality" Feature
+
+A second experience layered on top of the screen-assistant. Inspired by nonso.ai: interview a person with curated life-memory prompts, capture each spoken answer (audio + transcript), clone their voice with ElevenLabs, distill a first-person biography with Claude, then let family **talk to the preserved persona** (Claude replies in the cloned voice) — including fully voice-to-voice via push-to-talk in the Talk tab. The persona is framed as a *continuing first-person consciousness* (not a third-person replica), with gentle handling for memory-loss/Alzheimer's users. Opened from the menu bar panel's "Preserve a Voice" button, which posts `.clickyOpenLegacyWindow` and shows a standard resizable window (`LegacyWindowManager`) — separate from the compact panel. The window has three modes: **Capture** (record memories), **Library** (browse/edit/delete memories), and **Talk** (converse). Memories + audio persist locally in Application Support; the lightweight persona record auto-syncs (debounced) to Cloudflare KV via the Worker. All logic lives in `Legacy*` files and is owned by `LegacyManager`, which `CompanionManager` holds. The long-term product vision (continuous consciousness, multi-user access, and re-embodiment into a humanoid/other body) is documented in `IMMORTALITY.md` at the repo root.
 
 ## Key Files
 
@@ -74,8 +81,26 @@ Worker vars: `ELEVENLABS_VOICE_ID`
 | `ClickyAnalytics.swift` | ~121 | PostHog analytics integration for usage tracking. |
 | `WindowPositionManager.swift` | ~262 | Window placement logic, Screen Recording permission flow, and accessibility permission helpers. |
 | `AppBundleConfiguration.swift` | ~28 | Runtime configuration reader for keys stored in the app bundle Info.plist. |
-| `worker/src/index.ts` | ~142 | Cloudflare Worker proxy. Three routes: `/chat` (Claude), `/tts` (ElevenLabs), `/transcribe-token` (AssemblyAI temp token). |
 
+### Legacy feature files
+
+| File | Purpose |
+|------|---------|
+| `LegacyManager.swift` | Coordinator owning the store + services. High-level ops: build biography (Claude), clone voice, save recorded memory, sync persona. Auto-syncs the persona to the backend (debounced, via Combine on `memoryStore.$persona`) and exposes `personaSyncState`. Held by `CompanionManager`. |
+| `LegacyMemoryModels.swift` | Codable domain models: `LegacyMemoryCategory`, `LegacyMemoryPrompt`, `LegacyMemory`, `LegacyVoiceCloneStatus`, `LegacyPersona`. |
+| `LegacyMemoryPromptLibrary.swift` | Curated nonso-style life-memory prompts (childhood, family, love, milestones, etc.). |
+| `LegacyMemoryStore.swift` | Local persistence of memories + persona (JSON in Application Support; audio in `Legacy/Recordings/`). Observable. |
+| `LegacyMemoryRecorder.swift` | Records a memory answer to WAV (`AVAudioRecorder`) and transcribes it locally with Apple `Speech`. Reports level + elapsed time. |
+| `LegacyVoiceCloneService.swift` | Uploads memory audio as multipart to `/voice-clone`, returns the cloned ElevenLabs voice id. |
+| `LegacyPersonaPromptBuilder.swift` | Builds the persona system prompt (identity + biography + memories) that grounds Claude to reply as the person. |
+| `LegacyPersonaConversationManager.swift` | Drives the chat with the persona: Claude text streaming + cloned-voice TTS playback. |
+| `LegacyPersonaSyncService.swift` | Syncs the persona JSON to/from the Worker `/persona/:id` (KV). |
+| `LegacyHomeView.swift` | Window container: name the person, switch Capture/Library/Talk modes, build biography + clone voice footer, persona cloud-sync status. |
+| `LegacyInterviewView.swift` | Capture mode: prompt card, record/transcribe/save, prompt navigation, progress. |
+| `LegacyMemoryLibraryView.swift` | Library mode: browse every captured memory, edit transcripts inline, delete memories (with confirmation; also removes the audio). |
+| `LegacyConversationView.swift` | Talk mode: streaming chat transcript with the persona, speak-aloud toggle, and push-to-talk voice input (mic button → transcribe via `LegacyMemoryRecorder` → send) for fully voice-to-voice conversation. |
+| `LegacyWindowManager.swift` | Hosts the legacy UI in a standard resizable `NSWindow` (opened via `.clickyOpenLegacyWindow`). |
+| `worker/src/index.ts` | ~142 | Cloudflare Worker proxy. Three routes: `/chat` (Claude), `/tts` (ElevenLabs), `/transcribe-token` (AssemblyAI temp token). |
 ## Build & Run
 
 ```bash

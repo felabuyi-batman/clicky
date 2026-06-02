@@ -288,4 +288,87 @@ class ClaudeAPI {
         let duration = Date().timeIntervalSince(startTime)
         return (text: text, duration: duration)
     }
+
+    /// Streams a text-only conversation turn (no screenshot) used by the legacy
+    /// persona chat. The `systemPrompt` carries the persona's biography and
+    /// distilled memories so Claude replies in that person's voice. Calls
+    /// `onTextChunk` on the main actor with the accumulated reply for
+    /// progressive display, and returns the full reply when the stream ends.
+    func streamTextConversation(
+        systemPrompt: String,
+        conversationHistory: [(userMessage: String, assistantResponse: String)] = [],
+        userMessage: String,
+        onTextChunk: @MainActor @Sendable (String) -> Void
+    ) async throws -> (text: String, duration: TimeInterval) {
+        let startTime = Date()
+
+        var request = makeAPIRequest()
+
+        var messages: [[String: Any]] = []
+        for (priorUserMessage, priorAssistantResponse) in conversationHistory {
+            messages.append(["role": "user", "content": priorUserMessage])
+            messages.append(["role": "assistant", "content": priorAssistantResponse])
+        }
+        messages.append(["role": "user", "content": userMessage])
+
+        let body: [String: Any] = [
+            "model": model,
+            "max_tokens": 1024,
+            "stream": true,
+            "system": systemPrompt,
+            "messages": messages
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (byteStream, response) = try await session.bytes(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(
+                domain: "ClaudeAPI",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid HTTP response"]
+            )
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            var errorBodyChunks: [String] = []
+            for try await line in byteStream.lines {
+                errorBodyChunks.append(line)
+            }
+            let errorBody = errorBodyChunks.joined(separator: "\n")
+            throw NSError(
+                domain: "ClaudeAPI",
+                code: httpResponse.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "API Error (\(httpResponse.statusCode)): \(errorBody)"]
+            )
+        }
+
+        var accumulatedResponseText = ""
+
+        for try await line in byteStream.lines {
+            guard line.hasPrefix("data: ") else { continue }
+            let jsonString = String(line.dropFirst(6))
+            guard jsonString != "[DONE]" else { break }
+
+            guard let jsonData = jsonString.data(using: .utf8),
+                  let eventPayload = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                  let eventType = eventPayload["type"] as? String else {
+                continue
+            }
+
+            if eventType == "content_block_delta",
+               let delta = eventPayload["delta"] as? [String: Any],
+               let deltaType = delta["type"] as? String,
+               deltaType == "text_delta",
+               let textChunk = delta["text"] as? String {
+                accumulatedResponseText += textChunk
+                let currentAccumulatedText = accumulatedResponseText
+                await onTextChunk(currentAccumulatedText)
+            }
+        }
+
+        let duration = Date().timeIntervalSince(startTime)
+        return (text: accumulatedResponseText, duration: duration)
+    }
 }

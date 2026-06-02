@@ -62,6 +62,14 @@ struct CompanionPanelView: View {
                 Spacer()
                     .frame(height: 16)
 
+                preserveAVoiceButton
+                    .padding(.horizontal, 16)
+            }
+
+            if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
+                Spacer()
+                    .frame(height: 16)
+
                 dmFarzaButton
                     .padding(.horizontal, 16)
             }
@@ -636,6 +644,42 @@ struct CompanionPanelView: View {
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
                 )
+        }
+        .buttonStyle(.plain)
+        .pointerCursor()
+    }
+
+    // MARK: - Preserve a Voice Button
+
+    private var preserveAVoiceButton: some View {
+        Button(action: {
+            NotificationCenter.default.post(name: .clickyOpenLegacyWindow, object: nil)
+            NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "infinity")
+                    .font(.system(size: 12, weight: .medium))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Preserve a Voice")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Capture someone's memories and talk to them forever.")
+                        .font(.system(size: 10))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+            }
+            .foregroundColor(DS.Colors.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                    .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
         .pointerCursor()

@@ -4,3 +4,12 @@ compatibility_date = "2024-01-01"
 
 [vars]
 ELEVENLABS_VOICE_ID = "kPzsL2i3teMYv0FxEYQ6"
+
+# Persona + memory library storage for the legacy ("digital immortality")
+# feature. Stores each user's persona JSON keyed by their persona id so the
+# Mac app can sync and restore it. Create with:
+#   npx wrangler kv namespace create LEGACY_PERSONA_STORE
+# then paste the returned id below.
+[[kv_namespaces]]
+binding = "LEGACY_PERSONA_STORE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

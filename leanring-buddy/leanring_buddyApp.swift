@@ -33,6 +33,8 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
     private let companionManager = CompanionManager()
     private var sparkleUpdaterController: SPUStandardUpdaterController?
     private var checkForUpdatesObserver: NSObjectProtocol?
+    private var legacyWindowManager: LegacyWindowManager?
+    private var openLegacyWindowObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("🎯 Clicky: Starting...")
@@ -52,13 +54,35 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
         }
         registerAsLoginItemIfNeeded()
         startSparkleUpdater()
+        setUpLegacyWindow()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         if let observer = checkForUpdatesObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = openLegacyWindowObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         companionManager.stop()
+    }
+
+    /// Wires the "Preserve a Voice" legacy window so the menu bar panel can open
+    /// it on demand via a notification (keeping the panel decoupled from the
+    /// window's lifecycle, matching the rest of the app's NotificationCenter wiring).
+    private func setUpLegacyWindow() {
+        let windowManager = LegacyWindowManager(legacyManager: companionManager.legacyManager)
+        legacyWindowManager = windowManager
+
+        openLegacyWindowObserver = NotificationCenter.default.addObserver(
+            forName: .clickyOpenLegacyWindow,
+            object: nil,
+            queue: .main
+        ) { [weak windowManager] _ in
+            MainActor.assumeIsolated {
+                windowManager?.showWindow()
+            }
+        }
     }
 
     /// Registers the app as a login item so it launches automatically on

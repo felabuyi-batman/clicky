@@ -80,6 +80,11 @@ final class CompanionManager: ObservableObject {
         return ElevenLabsTTSClient(proxyURL: "\(Self.workerBaseURL)/tts")
     }()
 
+    /// Coordinator for the "digital immortality" legacy feature (capture life
+    /// memories → clone the voice → talk to the preserved persona). Owns its own
+    /// store and services, pointed at the same Worker proxy.
+    let legacyManager = LegacyManager(workerBaseURL: CompanionManager.workerBaseURL)
+
     /// Conversation history so Claude remembers prior exchanges within a session.
     /// Each entry is the user's transcript and Claude's response.
     private var conversationHistory: [(userTranscript: String, assistantResponse: String)] = []

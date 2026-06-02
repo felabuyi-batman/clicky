@@ -29,14 +29,16 @@ final class ElevenLabsTTSClient {
     }
 
     /// Sends `text` to ElevenLabs TTS and plays the resulting audio.
+    /// When `voiceID` is provided, that voice is used (e.g. the persona's cloned
+    /// voice); otherwise the Worker's default voice is used.
     /// Throws on network or decoding errors. Cancellation-safe.
-    func speakText(_ text: String) async throws {
+    func speakText(_ text: String, voiceID: String? = nil) async throws {
         var request = URLRequest(url: proxyURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "text": text,
             "model_id": "eleven_flash_v2_5",
             "voice_settings": [
@@ -44,6 +46,11 @@ final class ElevenLabsTTSClient {
                 "similarity_boost": 0.75
             ]
         ]
+        // The Worker reads an optional "voice_id" and overrides its default
+        // voice with it (used for the persona's cloned voice).
+        if let voiceID, !voiceID.isEmpty {
+            body["voice_id"] = voiceID
+        }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
